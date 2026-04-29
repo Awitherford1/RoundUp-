@@ -17,12 +17,13 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey: "PASTE_YOUR_API_KEY_HERE",
-  authDomain: "PASTE_YOUR_AUTH_DOMAIN_HERE",
-  projectId: "PASTE_YOUR_PROJECT_ID_HERE",
-  storageBucket: "PASTE_YOUR_STORAGE_BUCKET_HERE",
-  messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID_HERE",
-  appId: "PASTE_YOUR_APP_ID_HERE"
+  apiKey: "AIzaSyBSQNHkumfiZPsRpLZuqpjaOAaDXdlIzrQ",
+  authDomain: "roundup-43d15.firebaseapp.com",
+  projectId: "roundup-43d15",
+  storageBucket: "roundup-43d15.firebasestorage.app",
+  messagingSenderId: "368633294607",
+  appId: "1:368633294607:web:fb187ff48dfb00e227987a",
+  measurementId: "G-QJ9CK2ZJS8"
 };
 
 // Initialise Firebase
