@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rounds/{roundId} {
+      allow read: if true;
+      allow create: if isValidRound(request.resource.data);
+      allow update: if isValidRound(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.hostId == resource.data.hostId;
+      allow delete: if false;
+    }
+
+    function isValidRound(data) {
+      return data.keys().hasOnly([
+          'code', 'pub', 'host', 'hostId', 'members', 'drinks', 'requests',
+          'roundsDone', 'createdAt', 'updatedAt'
+        ])
+        && data.code is string
+        && data.code.matches('^[A-Z2-9]{4}$')
+        && data.pub is string
+        && data.pub.size() > 0
+        && data.pub.size() <= 80
+        && data.host is string
+        && data.host.size() > 0
+        && data.host.size() <= 40
+        && data.hostId is string
+        && data.hostId.matches('^member_[A-Za-z0-9]{6,18}$')
+        && data.members is list
+        && data.members.size() >= 1
+        && data.members.size() <= 30
+        && data.drinks is list
+        && data.drinks.size() <= 30
+        && data.requests is list
+        && data.requests.size() <= 30
+        && data.roundsDone is int
+        && data.roundsDone >= 0
+        && data.roundsDone <= 200;
+    }
+  }
+}
