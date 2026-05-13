@@ -524,7 +524,87 @@ body::before {
 .mt-8 { margin-top:8px; }
 .fw-600 { font-weight:600; }
 
-/* ===== MOBILE VIEWPORT FIX ===== */
+/* ===== CONFIRM DIALOG ===== */
+.confirm-overlay {
+  position: fixed; inset: 0;
+  background: rgba(10,6,2,0.72);
+  z-index: 300;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.15s ease;
+}
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+.confirm-box {
+  background: var(--cream);
+  border-radius: 18px;
+  padding: 24px 22px 20px;
+  width: 100%;
+  max-width: 320px;
+  animation: popIn 0.2s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes popIn { from{transform:scale(0.9);opacity:0} to{transform:scale(1);opacity:1} }
+.confirm-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px; font-weight: 700;
+  color: var(--dark); margin-bottom: 8px;
+}
+.confirm-msg { font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 20px; }
+.confirm-btns { display: flex; gap: 10px; }
+.confirm-cancel {
+  flex: 1; background: transparent;
+  border: 1.5px solid var(--border);
+  border-radius: 12px; padding: 13px;
+  font-size: 14px; font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer; color: var(--text-muted);
+  transition: all 0.15s;
+}
+.confirm-cancel:hover { background: rgba(0,0,0,0.04); }
+.confirm-ok {
+  flex: 1; background: var(--red); color: #fff;
+  border: none; border-radius: 12px; padding: 13px;
+  font-size: 14px; font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: all 0.15s;
+}
+.confirm-ok:hover { background: #a93226; }
+
+/* ===== ROUND QUEUE ===== */
+.round-queue {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: 10px; padding: 0 2px;
+}
+.queue-pill {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 20px;
+  padding: 4px 10px 4px 8px;
+  font-size: 12px; color: rgba(255,255,255,0.65);
+  transition: all 0.15s;
+}
+.queue-pill--next {
+  background: rgba(200,134,10,0.28);
+  border-color: rgba(200,134,10,0.5);
+  color: var(--amber-light);
+}
+.queue-pill-name { font-weight: 500; }
+.queue-pill-pos { font-size: 10px; opacity: 0.7; font-family: 'DM Mono', monospace; }
+.queue-more { font-size: 11px; color: rgba(255,255,255,0.35); align-self: center; padding-left: 4px; }
+
+/* ===== JOIN ERROR ===== */
+.join-error {
+  display: none;
+  background: rgba(192,57,43,0.18);
+  border: 1px solid rgba(192,57,43,0.35);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #ff9b8e;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
 html, body {
   min-height: 100%;
   height: 100%;
