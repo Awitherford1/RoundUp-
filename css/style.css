@@ -20,17 +20,17 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
-html, body {
+html {
   height: 100%;
-  overflow: hidden;
+  height: 100dvh;
 }
 
 body {
   font-family: 'DM Sans', sans-serif;
   background: var(--cream);
   color: var(--text);
-  position: fixed;
-  inset: 0;
+  height: 100%;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -50,8 +50,15 @@ body::before {
   flex-direction: column;
   position: fixed;
   inset: 0;
+  /* respect notch / home bar on iOS & Android */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   overflow: hidden;
   z-index: 1;
+  height: 100%;
+  height: 100dvh;
 }
 .screen.active {
   display: flex;
@@ -91,7 +98,7 @@ body::before {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 40px 28px;
+  padding: 40px 28px calc(40px + env(safe-area-inset-bottom));
   position: relative;
   overflow: hidden;
 }
@@ -104,11 +111,11 @@ body::before {
 .c1 { width: 400px; height: 400px; top: -100px; right: -100px; }
 .c2 { width: 300px; height: 300px; bottom: -80px; left: -80px; }
 .home-content { position: relative; z-index: 1; width: 100%; }
-.pint-icon { font-size: 68px; margin-bottom: 12px; animation: float 3.5s ease-in-out infinite; display: block; }
+.pint-icon { font-size: clamp(48px, 16vw, 68px); margin-bottom: 8px; animation: float 3.5s ease-in-out infinite; display: block; }
 @keyframes float { 0%,100%{transform:translateY(0) rotate(-3deg)} 50%{transform:translateY(-10px) rotate(3deg)} }
 .logo-big {
   font-family: 'Playfair Display', serif;
-  font-size: 54px;
+  font-size: clamp(40px, 13vw, 54px);
   font-weight: 900;
   color: #fff;
   line-height: 1;
@@ -123,7 +130,7 @@ body::before {
   text-transform: uppercase;
   font-family: 'DM Mono', monospace;
 }
-.home-btns { display: flex; flex-direction: column; gap: 12px; margin-top: 48px; }
+.home-btns { display: flex; flex-direction: column; gap: 12px; margin-top: 36px; }
 
 /* ===== BUTTONS ===== */
 .btn-primary {
@@ -204,7 +211,7 @@ body::before {
 }
 .page-title { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 700; color: var(--dark); }
 .page-body { padding: 20px; flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.page-footer { padding: 16px 20px 32px; flex-shrink: 0; background: var(--cream); border-top: 1px solid var(--border); }
+.page-footer { padding: 16px 20px calc(20px + env(safe-area-inset-bottom)); flex-shrink: 0; background: var(--cream); border-top: 1px solid var(--border); }
 
 /* ===== FORMS ===== */
 .form-group { margin-bottom: 18px; }
@@ -374,7 +381,7 @@ body::before {
 .btn-copy:hover { background:var(--dark-mid); }
 
 /* ===== ROUND FOOTER ===== */
-.round-footer { padding:14px 20px 28px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;background:var(--cream);border-top:1px solid var(--border); }
+.round-footer { padding:14px 20px calc(18px + env(safe-area-inset-bottom));flex-shrink:0;display:flex;flex-direction:column;gap:10px;background:var(--cream);border-top:1px solid var(--border); }
 .btn-order { width:100%;background:var(--amber);color:#fff;border:none;border-radius:14px;padding:17px;font-size:16px;font-weight:600;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all 0.18s; }
 .btn-order:hover { background:#D9930B;transform:translateY(-1px);box-shadow:0 8px 28px rgba(200,134,10,0.4); }
 
@@ -410,7 +417,7 @@ body::before {
 }
 .order-check.done { background:var(--green);border-color:var(--green); }
 .order-check.done::after { content:'✓';color:#fff;font-size:14px;font-weight:700; }
-.order-footer { padding:0 20px 32px;flex-shrink:0;display:flex;flex-direction:column;gap:10px; }
+.order-footer { padding:0 20px calc(20px + env(safe-area-inset-bottom));flex-shrink:0;display:flex;flex-direction:column;gap:10px; }
 
 /* ===== JOIN SCREEN ===== */
 .join-screen {
@@ -419,8 +426,9 @@ body::before {
   display:flex;
   flex-direction:column;
   align-items:stretch;
-  padding:28px 28px 40px;
+  padding:28px 28px calc(32px + env(safe-area-inset-bottom));
   overflow-y:auto;
+  -webkit-overflow-scrolling:touch;
 }
 .join-logo { font-family:'Playfair Display',serif;font-size:36px;font-weight:900;color:#fff;margin-bottom:6px; }
 .join-logo span { color:var(--amber-light); }
@@ -482,7 +490,7 @@ body::before {
 
 /* ===== TOAST ===== */
 .toast {
-  position:fixed;top:20px;left:50%;
+  position:fixed;top:max(20px, calc(12px + env(safe-area-inset-top)));left:50%;
   transform:translateX(-50%) translateY(-100px);
   background:var(--dark);color:#fff;
   padding:12px 22px;border-radius:50px;
@@ -619,4 +627,24 @@ body {
   html, body, .screen {
     height: 100dvh;
   }
+}
+
+/* ===== SMALL PHONE ADJUSTMENTS (SE, older Android) ===== */
+@media screen and (max-height: 667px) {
+  .round-hero { padding: 14px 20px 10px; }
+  .whos-next-banner { margin-top: 10px; padding: 8px 12px; }
+  .round-body { padding: 10px 16px; }
+  .round-footer { padding-top: 10px; gap: 7px; }
+  .btn-order, .btn-primary { padding: 14px 20px; font-size: 15px; }
+  .btn-outline { padding: 11px 20px; font-size: 13px; }
+  .order-hero { padding: 16px 20px 14px; }
+  .order-title { font-size: 26px; }
+  .home-btns { margin-top: 24px; }
+  .pint-icon { font-size: 44px; }
+}
+
+/* ===== KEYBOARD OPEN: shrink footers ===== */
+@media screen and (max-height: 500px) {
+  .page-footer { padding-top: 10px; padding-bottom: 14px; }
+  .round-footer { display: none; }
 }
