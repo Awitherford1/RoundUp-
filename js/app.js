@@ -40,6 +40,7 @@ let state = {
   pendingDrink: null,  // Selected drink in modal
   drinkModalMode: "drink", // "drink" or "request"
   memberList: [],      // Members added on start screen
+  orderLocked: false,  // True when host has tapped "Ready to order"
 };
 
 // ============================================
@@ -53,6 +54,10 @@ function initials(name) {
     .join("")
     .toUpperCase()
     .slice(0, 2);
+}
+
+function safeInitials(name) {
+  return escHtml(initials(name));
 }
 
 function getColor(index) {
@@ -157,6 +162,10 @@ window.UI = {
     }
   },
   openAddDrinkModal(mode = null) {
+    if (mode === "request" && state.orderLocked) {
+      showToast("Someone's at the bar — requests are locked! 🍺", 3500);
+      return;
+    }
     state.drinkModalMode = mode || (state.isHost ? "drink" : "request");
     state.pendingDrink = null;
     document.querySelectorAll(".preset").forEach(p => p.classList.remove("selected"));
@@ -181,6 +190,29 @@ window.UI = {
   clearPresetSelection() {
     document.querySelectorAll(".preset").forEach(p => p.classList.remove("selected"));
     state.pendingDrink = null;
+  },
+  showConfirm(title, message, confirmLabel, onConfirm) {
+    // Remove any existing confirm dialog
+    const existing = document.getElementById("confirm-dialog");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "confirm-dialog";
+    overlay.className = "confirm-overlay";
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <div class="confirm-title">${escHtml(title)}</div>
+        <div class="confirm-msg">${escHtml(message)}</div>
+        <div class="confirm-btns">
+          <button class="confirm-cancel" id="confirm-cancel-btn">Cancel</button>
+          <button class="confirm-ok" id="confirm-ok-btn">${escHtml(confirmLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    document.getElementById("confirm-cancel-btn").onclick = () => overlay.remove();
+    document.getElementById("confirm-ok-btn").onclick = () => { overlay.remove(); onConfirm(); };
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   }
 };
 
@@ -218,15 +250,49 @@ function renderRound(data) {
 
   // Leaderboard
   renderLeaderboard(members);
+
+  // Update request button state based on order lock
+  const reqBtn = document.querySelector(".btn-outline[onclick*=\"openAddDrinkModal('request')\"]");
+  if (reqBtn) {
+    if (state.orderLocked) {
+      reqBtn.disabled = true;
+      reqBtn.title = "Requests locked while someone is at the bar";
+      reqBtn.style.opacity = "0.45";
+    } else {
+      reqBtn.disabled = false;
+      reqBtn.title = "";
+      reqBtn.style.opacity = "";
+    }
+  }
 }
 
 function renderWhosNext(members) {
   if (!members.length) return;
-  const next = getNextBuyer(members);
+
+  // Sort all members by rounds bought (then join time) to get the full queue
+  const queue = [...members].sort((a, b) => {
+    const diff = (a.roundsBought || 0) - (b.roundsBought || 0);
+    return diff !== 0 ? diff : (a.joinedAtMs || 0) - (b.joinedAtMs || 0);
+  });
+  const next = queue[0];
+
   document.getElementById("whos-next-name").textContent = next.name;
   const rb = next.roundsBought || 0;
   document.getElementById("whos-next-sub").textContent =
     rb === 0 ? "Hasn't bought a round yet! 👀" : `${rb} round${rb !== 1 ? "s" : ""} bought`;
+
+  // Render the queue pills (up to 6 people shown)
+  const queueEl = document.getElementById("round-queue");
+  if (!queueEl) return;
+  const shown = queue.slice(0, 6);
+  queueEl.innerHTML = shown.map((m, i) => {
+    const isMe = memberKey(m) === getMyKey();
+    const label = i === 0 ? "up now" : `#${i + 1}`;
+    return `<div class="queue-pill ${i === 0 ? "queue-pill--next" : ""}">
+      <span class="queue-pill-name">${escHtml(m.name)}${isMe ? " (you)" : ""}</span>
+      <span class="queue-pill-pos">${label}</span>
+    </div>`;
+  }).join("") + (queue.length > 6 ? `<div class="queue-more">+${queue.length - 6} more</div>` : "");
 }
 
 function renderDrinks(drinks, members) {
@@ -252,7 +318,7 @@ function renderDrinks(drinks, members) {
 
     return `
       <div class="drink-row">
-        <div class="d-avatar" style="background:${color.bg};color:${color.fg}">${initials(d.member)}</div>
+        <div class="d-avatar" style="background:${color.bg};color:${color.fg}">${safeInitials(d.member)}</div>
         <div class="d-info">
           <div class="d-name">${escHtml(d.drink)}</div>
           <div class="d-person">${escHtml(d.member)}${isMe ? " (you)" : ""}</div>
@@ -282,7 +348,7 @@ function renderRequests(requests, members) {
     return `
       <div class="request-row">
         <div class="d-avatar" style="background:${color.bg};color:${color.fg};width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">
-          ${initials(r.name)}
+          ${safeInitials(r.name)}
         </div>
         <div class="d-info">
           <div class="d-name" style="font-size:13px;font-weight:600;">${escHtml(r.drink)}</div>
@@ -302,7 +368,7 @@ function renderRequests(requests, members) {
 function renderLeaderboard(members) {
   const sorted = [...members].sort((a, b) => (b.roundsBought || 0) - (a.roundsBought || 0));
   const max = Math.max(...sorted.map(m => m.roundsBought || 0), 1);
-  const minBought = Math.min(...sorted.map(m => m.roundsBought || 0));
+  const nextBuyerKey = memberKey(getNextBuyer(members) || {});
 
   document.getElementById("leaderboard-rows").innerHTML = sorted.map((m, i) => {
     const rb = m.roundsBought || 0;
@@ -312,12 +378,12 @@ function renderLeaderboard(members) {
 
     let badge = "";
     if (i === 0 && rb > 0) badge = `<span class="lb-badge" style="background:#E1F5EE;color:#0F6E56;">legend 🏆</span>`;
-    else if (rb === minBought) badge = `<span class="lb-badge" style="background:#FFF8EC;color:#854F0B;">up next 👑</span>`;
+    else if (memberKey(m) === nextBuyerKey) badge = `<span class="lb-badge" style="background:#FFF8EC;color:#854F0B;">up next 👑</span>`;
 
     return `
       <div class="lb-row">
         <div class="lb-pos">${i + 1}</div>
-        <div class="lb-av" style="background:${color.bg};color:${color.fg}">${initials(m.name)}</div>
+        <div class="lb-av" style="background:${color.bg};color:${color.fg}">${safeInitials(m.name)}</div>
         <div class="lb-name">${escHtml(m.name)}${isMe ? `<span class="lb-you">(you)</span>` : ""}</div>
         <div class="lb-bar-bg"><div class="lb-bar-fill" style="width:${pct}%"></div></div>
         <div class="lb-count-txt">${rb}r</div>
@@ -373,7 +439,7 @@ window.Round = {
       const color = getColor(i + 1); // +1 because host is index 0
       return `
         <div class="chip">
-          <div class="chip-avatar" style="background:${color.bg};color:${color.fg}">${initials(name)}</div>
+          <div class="chip-avatar" style="background:${color.bg};color:${color.fg}">${safeInitials(name)}</div>
           ${escHtml(name)}
           <span class="chip-remove" onclick="Round.removeMemberFromList(${i})">×</span>
         </div>`;
@@ -436,7 +502,10 @@ window.Round = {
 
       this._subscribeToRound(roundId);
       App.goTo("s-round");
-      showToast(`Round created! Code: ${code} 🍺`);
+      // Small delay so the round screen renders first, then prompt to share
+      setTimeout(() => {
+        showToast(`Round created! Code: ${code} — share it with your mates 🍺`, 4000);
+      }, 400);
 
     } catch (err) {
       console.error(err);
@@ -454,18 +523,35 @@ window.Round = {
       .map(id => document.getElementById(id).value.toUpperCase().trim())
       .join("");
     const name = document.getElementById("join-name").value.trim();
+    const errEl = document.getElementById("join-error");
+    const btn = document.getElementById("join-btn");
 
-    if (code.length < 4) { showToast("Enter the full 4-letter code 🔡"); return; }
-    if (!name) { showToast("Enter your name! 👆"); return; }
+    const setError = (msg) => {
+      if (errEl) { errEl.textContent = msg; errEl.style.display = msg ? "block" : "none"; }
+    };
 
-    showToast("Joining round…");
+    setError("");
+
+    if (code.length < 4) { setError("Enter the full 4-character code."); return; }
+    if (!name) { setError("Enter your name so your mates know who you are."); return; }
+
+    btn.innerHTML = `<span class="spinner"></span> Joining…`;
+    btn.disabled = true;
 
     try {
       // Find round by code — search across rounds
       const q = query(collection(db, "rounds"), where("code", "==", code));
       const snap = await getDocs(q);
 
-      if (snap.empty) { showToast("Round not found! Check the code 🤔"); return; }
+      if (snap.empty) {
+        // Clear the code inputs so the user can try again easily
+        ["c1","c2","c3","c4"].forEach(id => { document.getElementById(id).value = ""; });
+        document.getElementById("c1").focus();
+        setError("No round found with that code — double check it with whoever started the round.");
+        btn.textContent = "Join Round →";
+        btn.disabled = false;
+        return;
+      }
 
       const roundDoc = snap.docs[0];
       const roundId = roundDoc.id;
@@ -508,11 +594,15 @@ window.Round = {
       state.isHost = data.hostId ? data.hostId === myMemberId : data.host === name;
       rememberMember(roundId, myMemberId, name);
       this._subscribeToRound(roundId);
+      btn.textContent = "Join Round →";
+      btn.disabled = false;
       App.goTo("s-round");
 
     } catch (err) {
       console.error(err);
-      showToast("Something went wrong. Try again!");
+      setError("Something went wrong. Check your connection and try again.");
+      btn.textContent = "Join Round →";
+      btn.disabled = false;
     }
   },
 
@@ -575,6 +665,7 @@ window.Round = {
   // ---- REQUESTS ----
 
   async acceptRequest(idx) {
+    if (!state.isHost) { showToast("Only the host can accept requests."); return; }
     const data = state.roundData;
     if (!data) return;
     const requests = [...(data.requests || [])];
@@ -609,6 +700,7 @@ window.Round = {
   },
 
   async rejectRequest(idx) {
+    if (!state.isHost) { showToast("Only the host can reject requests."); return; }
     const data = state.roundData;
     if (!data) return;
     const requests = [...(data.requests || [])];
@@ -631,6 +723,9 @@ window.Round = {
       showToast("No drinks in the round yet!");
       return;
     }
+    state.orderLocked = true;
+    // Notify others that requests are now locked (reflected in UI via state flag)
+    renderRound(state.roundData); // re-render to lock the request button
     renderOrderList();
     App.goTo("s-order");
   },
@@ -643,6 +738,7 @@ window.Round = {
   },
 
   async completeRound() {
+    if (!state.isHost) { showToast("Only the host can complete the round."); return; }
     const data = state.roundData;
     if (!data) return;
 
@@ -665,6 +761,7 @@ window.Round = {
         roundsDone: (data.roundsDone || 0) + 1,
         updatedAt: serverTimestamp(),
       });
+      state.orderLocked = false;
       App.goTo("s-round");
       showToast(`Round ${(data.roundsDone || 0) + 1} done! Buyer credited: ${nextBuyer.name}`);
     } catch (err) {
@@ -690,15 +787,23 @@ window.Round = {
   // ---- LEAVE ----
 
   leaveRound() {
-    if (state.unsubscribe) state.unsubscribe();
-    state.roundId = null;
-    state.roundCode = null;
-    state.myName = null;
-    state.myMemberId = null;
-    state.isHost = false;
-    state.roundData = null;
-    App.goTo("s-home");
-    showToast("Left the round 👋");
+    UI.showConfirm(
+      "Leave the round?",
+      "You'll lose your spot in the order and need to re-join with the code.",
+      "Leave round",
+      () => {
+        if (state.unsubscribe) state.unsubscribe();
+        state.roundId = null;
+        state.roundCode = null;
+        state.myName = null;
+        state.myMemberId = null;
+        state.isHost = false;
+        state.roundData = null;
+        state.orderLocked = false;
+        App.goTo("s-home");
+        showToast("Left the round 👋");
+      }
+    );
   }
 };
 
