@@ -40,7 +40,6 @@ let state = {
   pendingDrink: null,  // Selected drink in modal
   drinkModalMode: "drink", // "drink" or "request"
   memberList: [],      // Members added on start screen
-  orderLocked: false,  // True when host has tapped "Ready to order"
 };
 
 // ============================================
@@ -95,10 +94,24 @@ function rememberMember(roundId, memberId, name) {
   if (!roundId || !memberId) return;
   localStorage.setItem(`roundup:${roundId}:memberId`, memberId);
   localStorage.setItem(`roundup:${roundId}:memberName`, name || "");
+  // Track the last active round so we can restore it on refresh
+  localStorage.setItem("roundup:lastRoundId", roundId);
 }
 
 function getRememberedMemberId(roundId) {
   return localStorage.getItem(`roundup:${roundId}:memberId`);
+}
+
+function getRememberedMemberName(roundId) {
+  return localStorage.getItem(`roundup:${roundId}:memberName`);
+}
+
+function clearRememberedRound(roundId) {
+  if (roundId) {
+    localStorage.removeItem(`roundup:${roundId}:memberId`);
+    localStorage.removeItem(`roundup:${roundId}:memberName`);
+  }
+  localStorage.removeItem("roundup:lastRoundId");
 }
 
 function getNextBuyer(members) {
@@ -117,6 +130,12 @@ function slugify(name) {
 function getShareUrl(code) {
   const base = window.location.origin + window.location.pathname;
   return `${base}?join=${code}`;
+}
+
+// Push the current round into the URL so refresh preserves context
+function pushRoundUrl(code) {
+  const url = `${window.location.pathname}?join=${code}`;
+  window.history.replaceState({}, "", url);
 }
 
 // ============================================
@@ -162,10 +181,6 @@ window.UI = {
     }
   },
   openAddDrinkModal(mode = null) {
-    if (mode === "request" && state.orderLocked) {
-      showToast("Someone's at the bar — requests are locked! 🍺", 3500);
-      return;
-    }
     state.drinkModalMode = mode || (state.isHost ? "drink" : "request");
     state.pendingDrink = null;
     document.querySelectorAll(".preset").forEach(p => p.classList.remove("selected"));
@@ -190,29 +205,6 @@ window.UI = {
   clearPresetSelection() {
     document.querySelectorAll(".preset").forEach(p => p.classList.remove("selected"));
     state.pendingDrink = null;
-  },
-  showConfirm(title, message, confirmLabel, onConfirm) {
-    // Remove any existing confirm dialog
-    const existing = document.getElementById("confirm-dialog");
-    if (existing) existing.remove();
-
-    const overlay = document.createElement("div");
-    overlay.id = "confirm-dialog";
-    overlay.className = "confirm-overlay";
-    overlay.innerHTML = `
-      <div class="confirm-box">
-        <div class="confirm-title">${escHtml(title)}</div>
-        <div class="confirm-msg">${escHtml(message)}</div>
-        <div class="confirm-btns">
-          <button class="confirm-cancel" id="confirm-cancel-btn">Cancel</button>
-          <button class="confirm-ok" id="confirm-ok-btn">${escHtml(confirmLabel)}</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    document.getElementById("confirm-cancel-btn").onclick = () => overlay.remove();
-    document.getElementById("confirm-ok-btn").onclick = () => { overlay.remove(); onConfirm(); };
-    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   }
 };
 
@@ -250,49 +242,15 @@ function renderRound(data) {
 
   // Leaderboard
   renderLeaderboard(members);
-
-  // Update request button state based on order lock
-  const reqBtn = document.querySelector(".btn-outline[onclick*=\"openAddDrinkModal('request')\"]");
-  if (reqBtn) {
-    if (state.orderLocked) {
-      reqBtn.disabled = true;
-      reqBtn.title = "Requests locked while someone is at the bar";
-      reqBtn.style.opacity = "0.45";
-    } else {
-      reqBtn.disabled = false;
-      reqBtn.title = "";
-      reqBtn.style.opacity = "";
-    }
-  }
 }
 
 function renderWhosNext(members) {
   if (!members.length) return;
-
-  // Sort all members by rounds bought (then join time) to get the full queue
-  const queue = [...members].sort((a, b) => {
-    const diff = (a.roundsBought || 0) - (b.roundsBought || 0);
-    return diff !== 0 ? diff : (a.joinedAtMs || 0) - (b.joinedAtMs || 0);
-  });
-  const next = queue[0];
-
+  const next = getNextBuyer(members);
   document.getElementById("whos-next-name").textContent = next.name;
   const rb = next.roundsBought || 0;
   document.getElementById("whos-next-sub").textContent =
     rb === 0 ? "Hasn't bought a round yet! 👀" : `${rb} round${rb !== 1 ? "s" : ""} bought`;
-
-  // Render the queue pills (up to 6 people shown)
-  const queueEl = document.getElementById("round-queue");
-  if (!queueEl) return;
-  const shown = queue.slice(0, 6);
-  queueEl.innerHTML = shown.map((m, i) => {
-    const isMe = memberKey(m) === getMyKey();
-    const label = i === 0 ? "up now" : `#${i + 1}`;
-    return `<div class="queue-pill ${i === 0 ? "queue-pill--next" : ""}">
-      <span class="queue-pill-name">${escHtml(m.name)}${isMe ? " (you)" : ""}</span>
-      <span class="queue-pill-pos">${label}</span>
-    </div>`;
-  }).join("") + (queue.length > 6 ? `<div class="queue-more">+${queue.length - 6} more</div>` : "");
 }
 
 function renderDrinks(drinks, members) {
@@ -501,11 +459,9 @@ window.Round = {
       state.memberList = [];
 
       this._subscribeToRound(roundId);
+      pushRoundUrl(code);
       App.goTo("s-round");
-      // Small delay so the round screen renders first, then prompt to share
-      setTimeout(() => {
-        showToast(`Round created! Code: ${code} — share it with your mates 🍺`, 4000);
-      }, 400);
+      showToast(`Round created! Code: ${code} 🍺`);
 
     } catch (err) {
       console.error(err);
@@ -523,35 +479,18 @@ window.Round = {
       .map(id => document.getElementById(id).value.toUpperCase().trim())
       .join("");
     const name = document.getElementById("join-name").value.trim();
-    const errEl = document.getElementById("join-error");
-    const btn = document.getElementById("join-btn");
 
-    const setError = (msg) => {
-      if (errEl) { errEl.textContent = msg; errEl.style.display = msg ? "block" : "none"; }
-    };
+    if (code.length < 4) { showToast("Enter the full 4-letter code 🔡"); return; }
+    if (!name) { showToast("Enter your name! 👆"); return; }
 
-    setError("");
-
-    if (code.length < 4) { setError("Enter the full 4-character code."); return; }
-    if (!name) { setError("Enter your name so your mates know who you are."); return; }
-
-    btn.innerHTML = `<span class="spinner"></span> Joining…`;
-    btn.disabled = true;
+    showToast("Joining round…");
 
     try {
       // Find round by code — search across rounds
       const q = query(collection(db, "rounds"), where("code", "==", code));
       const snap = await getDocs(q);
 
-      if (snap.empty) {
-        // Clear the code inputs so the user can try again easily
-        ["c1","c2","c3","c4"].forEach(id => { document.getElementById(id).value = ""; });
-        document.getElementById("c1").focus();
-        setError("No round found with that code — double check it with whoever started the round.");
-        btn.textContent = "Join Round →";
-        btn.disabled = false;
-        return;
-      }
+      if (snap.empty) { showToast("Round not found! Check the code 🤔"); return; }
 
       const roundDoc = snap.docs[0];
       const roundId = roundDoc.id;
@@ -594,15 +533,12 @@ window.Round = {
       state.isHost = data.hostId ? data.hostId === myMemberId : data.host === name;
       rememberMember(roundId, myMemberId, name);
       this._subscribeToRound(roundId);
-      btn.textContent = "Join Round →";
-      btn.disabled = false;
+      pushRoundUrl(data.code);
       App.goTo("s-round");
 
     } catch (err) {
       console.error(err);
-      setError("Something went wrong. Check your connection and try again.");
-      btn.textContent = "Join Round →";
-      btn.disabled = false;
+      showToast("Something went wrong. Try again!");
     }
   },
 
@@ -612,7 +548,12 @@ window.Round = {
     if (state.unsubscribe) state.unsubscribe();
     state.unsubscribe = onSnapshot(doc(db, "rounds", roundId), (snap) => {
       if (!snap.exists()) { showToast("Round no longer exists"); return; }
-      renderRound(snap.data());
+      const data = snap.data();
+      // Re-derive isHost on every update so refresh doesn't lose host status
+      if (state.myMemberId && data.hostId) {
+        state.isHost = data.hostId === state.myMemberId;
+      }
+      renderRound(data);
     });
   },
 
@@ -723,9 +664,6 @@ window.Round = {
       showToast("No drinks in the round yet!");
       return;
     }
-    state.orderLocked = true;
-    // Notify others that requests are now locked (reflected in UI via state flag)
-    renderRound(state.roundData); // re-render to lock the request button
     renderOrderList();
     App.goTo("s-order");
   },
@@ -761,7 +699,6 @@ window.Round = {
         roundsDone: (data.roundsDone || 0) + 1,
         updatedAt: serverTimestamp(),
       });
-      state.orderLocked = false;
       App.goTo("s-round");
       showToast(`Round ${(data.roundsDone || 0) + 1} done! Buyer credited: ${nextBuyer.name}`);
     } catch (err) {
@@ -787,23 +724,18 @@ window.Round = {
   // ---- LEAVE ----
 
   leaveRound() {
-    UI.showConfirm(
-      "Leave the round?",
-      "You'll lose your spot in the order and need to re-join with the code.",
-      "Leave round",
-      () => {
-        if (state.unsubscribe) state.unsubscribe();
-        state.roundId = null;
-        state.roundCode = null;
-        state.myName = null;
-        state.myMemberId = null;
-        state.isHost = false;
-        state.roundData = null;
-        state.orderLocked = false;
-        App.goTo("s-home");
-        showToast("Left the round 👋");
-      }
-    );
+    const rid = state.roundId;
+    if (state.unsubscribe) state.unsubscribe();
+    clearRememberedRound(rid);
+    window.history.replaceState({}, "", window.location.pathname);
+    state.roundId      = null;
+    state.roundCode    = null;
+    state.myName       = null;
+    state.myMemberId   = null;
+    state.isHost       = false;
+    state.roundData    = null;
+    App.goTo("s-home");
+    showToast("Left the round 👋");
   }
 };
 
@@ -811,15 +743,47 @@ window.Round = {
 // BOOTSTRAP
 // ============================================
 
-function bootstrap() {
-  // Check for ?join=CODE in URL (deep link)
+async function bootstrap() {
   const params = new URLSearchParams(window.location.search);
   const joinCode = params.get("join");
 
-  // Small delay for loading screen feel
+  // Check for a saved active session (survives refresh)
+  const lastRoundId = localStorage.getItem("roundup:lastRoundId");
+  const savedMemberId = lastRoundId ? getRememberedMemberId(lastRoundId) : null;
+  const savedName    = lastRoundId ? getRememberedMemberName(lastRoundId) : null;
+
+  if (lastRoundId && savedMemberId && savedName && !joinCode) {
+    // Try to rejoin silently
+    try {
+      const snap = await getDoc(doc(db, "rounds", lastRoundId));
+      if (snap.exists()) {
+        const data = snap.data();
+        const members = data.members || [];
+        const member = members.find(m => memberKey(m) === savedMemberId);
+        if (member) {
+          state.roundId      = lastRoundId;
+          state.roundCode    = data.code;
+          state.myName       = savedName;
+          state.myMemberId   = savedMemberId;
+          state.isHost       = data.hostId === savedMemberId;
+          Round._subscribeToRound(lastRoundId);
+          // Skip loading screen delay — jump straight in
+          document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+          document.getElementById("s-round").classList.add("active");
+          showToast(`Welcome back, ${savedName}! 🍺`);
+          return; // Done — don't fall through to normal boot
+        }
+      }
+    } catch (e) {
+      console.warn("Session restore failed:", e);
+    }
+    // If restore failed, clear stale data so they go to home
+    clearRememberedRound(lastRoundId);
+  }
+
+  // Normal boot flow
   setTimeout(() => {
     if (joinCode) {
-      // Pre-fill the code inputs
       joinCode.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4).split("").forEach((ch, i) => {
         const el = document.getElementById(`c${i + 1}`);
         if (el) el.value = ch;
